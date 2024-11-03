@@ -1,3 +1,4 @@
+//cliRun.ts
 import process from 'node:process';
 import { type OptionValues, program } from 'commander';
 import pc from 'picocolors';
@@ -23,6 +24,12 @@ export interface CliOptions extends OptionValues {
   init?: boolean;
   global?: boolean;
   remote?: string;
+  // AI-specific options
+  aiEnabled?: boolean;
+  aiProvider?: 'openai' | 'claude';
+  aiThreshold?: number;
+  aiModel?: string;
+  aiMaxTokens?: number;
 }
 
 export async function run() {
@@ -32,6 +39,7 @@ export async function run() {
     program
       .description('Repopack - Pack your repository into a single AI-friendly file')
       .arguments('[directory]')
+      // Original options
       .option('-v, --version', 'show version information')
       .option('-o, --output <file>', 'specify the output file name')
       .option('--include <patterns>', 'list of include patterns (comma-separated)')
@@ -44,6 +52,30 @@ export async function run() {
       .option('--init', 'initialize a new repopack.config.json file')
       .option('--global', 'use global configuration (only applicable with --init)')
       .option('--remote <url>', 'process a remote Git repository')
+      // AI-specific options
+      .option('--ai-enabled', 'enable AI-powered analysis')
+      .option(
+        '--ai-provider <provider>', 
+        'AI provider to use (openai or claude)', 
+        'openai'
+      )
+      .option(
+        '--ai-threshold <number>', 
+        'relevance threshold for AI analysis (0.0-1.0)', 
+        parseFloat,
+        0.7
+      )
+      .option(
+        '--ai-model <model>', 
+        'specific AI model to use', 
+        'gpt-4o'
+      )
+      .option(
+        '--ai-max-tokens <number>', 
+        'maximum tokens for AI analysis', 
+        Number.parseInt,
+        4000
+      )
       .action((directory = '.', options: CliOptions = {}) => executeAction(directory, process.cwd(), options));
 
     await program.parseAsync(process.argv);
@@ -71,6 +103,19 @@ const executeAction = async (directory: string, cwd: string, options: CliOptions
   if (options.remote) {
     await runRemoteAction(options.remote, options);
     return;
+  }
+
+  // Log AI settings if enabled
+  if (options.aiEnabled) {
+    logger.log(pc.cyan('\n🤖 AI Analysis Enabled:'));
+    logger.log(pc.dim('──────────────────────'));
+    logger.log(`Provider: ${pc.white(options.aiProvider || 'openai')}`);
+    logger.log(`Model: ${pc.white(options.aiModel || 'gpt-4o')}`);
+    logger.log(`Threshold: ${pc.white(options.aiThreshold?.toString() || '0.7')}`);
+    logger.log('');
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY environment variable must be set when using AI analysis");
+  }
   }
 
   await runDefaultAction(directory, cwd, options);

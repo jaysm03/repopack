@@ -1,3 +1,4 @@
+//remoteAction.ts
 import { exec } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
@@ -12,7 +13,7 @@ import { runDefaultAction } from './defaultAction.js';
 
 const execAsync = promisify(exec);
 
-export const runRemoteAction = async (repoUrl: string, options: CliOptions): Promise<void> => {
+const runRemoteAction = async (repoUrl: string, options: CliOptions): Promise<void> => {
   const gitInstalled = await checkGitInstallation();
   if (!gitInstalled) {
     throw new RepopackError('Git is not installed or not in the system PATH.');
@@ -28,15 +29,36 @@ export const runRemoteAction = async (repoUrl: string, options: CliOptions): Pro
     spinner.succeed('Repository cloned successfully!');
     logger.log('');
 
-    const result = await runDefaultAction(tempDir, tempDir, options);
+    // Prepare AI options
+    const aiOptions: CliOptions = {
+      ...options,
+      aiEnabled: options.aiEnabled ?? true,
+      aiProvider: options.aiProvider ?? 'openai',
+      aiModel: options.aiModel ?? 'gpt-4o',
+      aiThreshold: options.aiThreshold ?? 0.7,
+      aiMaxTokens: options.aiMaxTokens ?? 4000
+    };
+
+    // Log AI settings if enabled
+    if (aiOptions.aiEnabled) {
+      logger.log(pc.cyan('\n🤖 AI Analysis Settings:'));
+      logger.log(pc.dim('───────────────────'));
+      logger.log(`Provider: ${pc.white(aiOptions.aiProvider)}`);
+      logger.log(`Model: ${pc.white(aiOptions.aiModel)}`);
+      logger.log(`Threshold: ${pc.white(aiOptions.aiThreshold?.toString())}`);
+      logger.log('');
+    }
+
+    const result = await runDefaultAction(tempDir, tempDir, aiOptions);
     await copyOutputToCurrentDirectory(tempDir, process.cwd(), result.config.output.filePath);
+
   } finally {
     // Clean up the temporary directory
     await cleanupTempDirectory(tempDir);
   }
 };
 
-export const formatGitUrl = (url: string): string => {
+const formatGitUrl = (url: string): string => {
   // If the URL is in the format owner/repo, convert it to a GitHub URL
   if (/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/.test(url)) {
     logger.trace(`Formatting GitHub shorthand: ${url}`);
@@ -63,6 +85,7 @@ const cloneRepository = async (url: string, directory: string): Promise<void> =>
   logger.log('');
 
   try {
+    // Using --depth 1 for a shallow clone to speed up the process
     await execAsync(`git clone --depth 1 ${url} ${directory}`);
   } catch (error) {
     throw new RepopackError(`Failed to clone repository: ${(error as Error).message}`);
@@ -98,7 +121,51 @@ const copyOutputToCurrentDirectory = async (
   try {
     logger.trace(`Copying output file from: ${sourcePath} to: ${targetPath}`);
     await fs.copyFile(sourcePath, targetPath);
+    
+    // Log success message with file path
+    logger.success(`\nOutput file created: ${pc.green(outputFileName)}`);
+    logger.log(`Location: ${pc.dim(targetPath)}`);
   } catch (error) {
     throw new RepopackError(`Failed to copy output file: ${(error as Error).message}`);
   }
+};
+
+interface RemoteAnalysisResult {
+  totalFiles: number;
+  relevantFiles: number;
+  outputPath: string;
+  aiEnabled: boolean;
+  aiMetrics?: {
+    avgRelevance: number;
+    highRelevanceFiles: number;
+    processedWithAI: boolean;
+  };
+}
+
+const logAnalysisResults = (result: RemoteAnalysisResult): void => {
+  logger.log(pc.cyan('\n📊 Analysis Results:'));
+  logger.log(pc.dim('─────────────────'));
+  logger.log(`Total Files Analyzed: ${pc.white(result.totalFiles.toString())}`);
+  logger.log(`Relevant Files: ${pc.white(result.relevantFiles.toString())}`);
+
+  if (result.aiEnabled && result.aiMetrics) {
+    logger.log(pc.cyan('\n🤖 AI Metrics:'));
+    logger.log(pc.dim('────────────'));
+    logger.log(`Average Relevance: ${pc.white((result.aiMetrics.avgRelevance * 100).toFixed(1))}%`);
+    logger.log(`High Relevance Files: ${pc.white(result.aiMetrics.highRelevanceFiles.toString())}`);
+  }
+
+  logger.log('');
+};
+
+export {
+  runRemoteAction,
+  formatGitUrl,
+  createTempDirectory,
+  cloneRepository,
+  cleanupTempDirectory,
+  checkGitInstallation,
+  copyOutputToCurrentDirectory,
+  logAnalysisResults,
+  type RemoteAnalysisResult
 };

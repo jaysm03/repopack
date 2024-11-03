@@ -111,5 +111,10 @@ export const mergeConfigs = (
       ...fileConfig.security,
       ...cliConfig.security,
     },
+    ai: {
+      ...defaultConfig.ai,
+      ...fileConfig.ai,
+      ...cliConfig.ai,
+    }
   };
 };

@@ -10,6 +10,8 @@ export const defaultConfig: RepopackConfigDefault = {
   output: {
     filePath: defaultFilePathMap.plain,
     style: 'plain',
+    headerText: null,
+    instructionFilePath: null,
     removeComments: false,
     removeEmptyLines: false,
     topFilesLength: 5,
@@ -24,4 +26,11 @@ export const defaultConfig: RepopackConfigDefault = {
   security: {
     enableSecurityCheck: true,
   },
+  ai: {
+    enabled: false,
+    provider: 'openai',
+    relevanceThreshold: 0.7,
+    maxTokens: 4000,
+    modelName: 'gpt-4o'
+  }
 };

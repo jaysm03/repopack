@@ -3,6 +3,7 @@ import path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import pMap from 'p-map';
 import pc from 'picocolors';
+import { AIBridge } from '../ai/aiBridge.js';
 import type { RepopackConfigMerged } from '../config/configTypes.js';
 import { logger } from '../shared/logger.js';
 import { getProcessConcurrency } from '../shared/processConcurrency.js';
@@ -29,6 +30,11 @@ export interface PackResult {
   fileCharCounts: Record<string, number>;
   fileTokenCounts: Record<string, number>;
   suspiciousFilesResults: SuspiciousFileResult[];
+  aiAnalysis?: {
+    relevantFiles: string[];
+    excludedFiles: string[];
+    projectContext: Record<string, any>;
+  };
 }
 
 export const pack = async (
@@ -47,9 +53,27 @@ export const pack = async (
   progressCallback('Searching for files...');
   const filePaths = await deps.searchFiles(rootDir, config);
 
+  // AI Analysis if enabled
+  let aiAnalysis;
+  if (config.ai?.enabled) {
+    progressCallback('Running AI analysis...');
+    try {
+      const aiBridge = new AIBridge();
+      aiAnalysis = await aiBridge.analyzeRepository(rootDir, config);
+      logger.trace('AI Analysis completed:', aiAnalysis);
+    } catch (error) {
+      logger.warn('AI analysis failed, proceeding with default processing:', error);
+    }
+  }
+
+  // Filter files based on AI analysis if available
+  const relevantPaths = aiAnalysis 
+    ? filePaths.filter(path => aiAnalysis.relevantFiles.includes(path))
+    : filePaths;
+
   // Collect raw files
   progressCallback('Collecting files...');
-  const rawFiles = await deps.collectFiles(filePaths, rootDir);
+  const rawFiles = await deps.collectFiles(relevantPaths, rootDir);
 
   let safeRawFiles = rawFiles;
   let suspiciousFilesResults: SuspiciousFileResult[] = [];
@@ -123,5 +147,10 @@ export const pack = async (
     fileCharCounts,
     fileTokenCounts,
     suspiciousFilesResults,
+    aiAnalysis: aiAnalysis ? {
+      relevantFiles: aiAnalysis.relevantFiles,
+      excludedFiles: filePaths.filter(path => !aiAnalysis.relevantFiles.includes(path)),
+      projectContext: aiAnalysis.projectContext
+    } : undefined
   };
 };

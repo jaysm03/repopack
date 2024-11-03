@@ -11,6 +11,7 @@ import { logger } from '../../shared/logger.js';
 import { printCompletion, printSecurityCheck, printSummary, printTopFiles } from '../cliPrint.js';
 import type { CliOptions } from '../cliRun.js';
 import Spinner from '../cliSpinner.js';
+import { AIBridge } from '../../ai/aiBridge.js';
 
 export interface DefaultActionRunnerResult {
   packResult: PackResult;
@@ -34,7 +35,6 @@ export const runDefaultAction = async (
 
   // Merge default, file, and CLI configs
   const config: RepopackConfigMerged = mergeConfigs(cwd, fileConfig, cliConfig);
-
   logger.trace('Merged config:', config);
 
   const targetPath = path.resolve(directory);
@@ -45,7 +45,17 @@ export const runDefaultAction = async (
   let packResult: PackResult;
 
   try {
-    packResult = await pack(targetPath, config, (message) => {
+    packResult = await pack(targetPath, {
+      ...config,
+      ai: {
+        ...config.ai,
+        enabled: options.aiEnabled ?? config.ai.enabled,
+        provider: options.aiProvider ?? config.ai.provider,
+        relevanceThreshold: options.aiThreshold ?? config.ai.relevanceThreshold,
+        maxTokens: options.aiMaxTokens ?? config.ai.maxTokens,
+        modelName: options.aiModel ?? config.ai.modelName
+      }
+    }, (message: string) => {
       spinner.update(message);
     });
   } catch (error) {
@@ -102,6 +112,17 @@ const buildCliConfig = (options: CliOptions): RepopackConfigCli => {
   }
   if (options.style) {
     cliConfig.output = { ...cliConfig.output, style: options.style.toLowerCase() as RepopackOutputStyle };
+  }
+
+  // Add AI configuration from CLI options
+  if (options.aiEnabled || options.aiProvider || options.aiThreshold || options.aiMaxTokens || options.aiModel) {
+    cliConfig.ai = {
+      enabled: options.aiEnabled ?? false,
+      provider: options.aiProvider ?? 'openai',
+      relevanceThreshold: options.aiThreshold ?? 0.7,
+      maxTokens: options.aiMaxTokens ?? 4000,
+      modelName: options.aiModel ?? 'gpt-4o'
+    };
   }
 
   return cliConfig;
